@@ -1,0 +1,6 @@
+[submodule "js/zip"]
+	path = js/zip
+	url = git://github.com/gildas-lormeau/zip.js
+[submodule "js/dataview"]
+	path = js/dataview
+	url = https://github.com/davidflanagan/DataView.js

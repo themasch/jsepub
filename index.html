@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8" />
+    <title></title>
+    <style type="text/css">
+    html, body { 
+      height: 100%;
+      margin:0;padding:0;
+    }
+    #reader {
+      width: 580px;
+      margin: auto;
+      min-height: 100%;
+      box-shadow: gray 0 0 10px;
+      padding: 10px;
+    } 
+
+    #prevPage,  
+    #nextPage {
+      position: fixed;
+      height: 100%;;
+      background-color: #eee;
+      color: transparent;
+      width; 40px;
+    }
+    #nextPage { right: 0; }
+    #prevPage { left: 0; }
+    </style>
+    <style id="pagestyles" type="text/css">
+    </style>
+</head>
+<body>
+<a href="#" id="prevPage">next page</a>
+<a href="#" id="nextPage">next page</a>
+<div id="reader"></div>
+<script src="js/zip/WebContent/zip.js" type="text/javascript"></script>
+<script src="js/zip/WebContent/zip-fs.js" type="text/javascript"></script>
+<script src="js/dataview/DataView.js" type="text/javascript"></script>
+<script src="js/book.js" type="text/javascript"></script>
+<script src="js/book.reader.js" type="text/javascript"></script>
+<script type="text/javascript">
+    zip.workerScriptsPath = "js/zip/WebContent/";
+    var db = document.body; //('dropbox');
+
+    var noopHandler = function(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+    }
+    db.addEventListener('dragenter', noopHandler, false);
+    db.addEventListener('dragexit', noopHandler, false);
+    db.addEventListener('dragover', noopHandler, false);
+    db.addEventListener('drop', function(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+      var files = evt.dataTransfer.files;
+      if(files.length > 0) {
+        var file =files[0];
+        if(file.type == 'application/epub+zip') {
+          startReader(file);
+        } else {
+          console.log('wrong file type');
+        }
+      }
+    }, false);
+
+
+    function startReader(file) {
+      var fs = new zip.fs.FS();
+
+      fs.getContent = function(path, cb, type) {
+        if(!type) type = 'text';
+        var ele = this.find(path);
+        if(ele) {
+          ele.getBlob(function(text) {
+            var fr = new FileReader();
+            fr.onload = function(text) {
+              cb(text.target.result);
+            };
+            if(type == 'text') {
+              fr.readAsText(text);
+            } 
+            else if(type == 'uri') {
+              fr.readAsDataURL(text);
+            } else {
+              fr.readAsBinaryString(text);
+            }
+          });
+        } else {
+          console.log(path, ' not found');
+          cb(null);
+        }
+      };
+
+      fs.getXML = function(path, cb, type) {
+        if(!type) type = 'text';
+        this.getContent(path, function(text){ 
+          if(text !== null) {
+            var parser = new DOMParser(), 
+              doc    = parser.parseFromString(text, 'application/xml');
+            cb(doc);
+          } else { cb(null) }
+        }, type);
+      };
+
+      fs.importBlob(file, 
+        function() 
+        {
+          var myBook = new mit.book.Book(fs);
+          var reader = new mit.book.Reader(document.getElementById('reader'));
+          //fs.find('META-INF/container.xml').getText(
+          fs.getXML('META-INF/container.xml', function(doc) {
+            var roots = doc.getElementsByTagName('rootfile');
+            if(roots.length) { 
+              var rootPath = roots[0].getAttribute("full-path");
+              var relPath = rootPath.split('/').slice(0, -1).join('/');
+              myBook.baseUrl = relPath;
+              fs.getXML(rootPath, function(doc) {
+                var items = doc.getElementsByTagName('manifest')[0].childNodes;
+                var spine = doc.getElementsByTagName('spine')[0].childNodes;
+                // create a index of all items
+                for(var i=0;i<items.length;i++) {
+                  if(items[i].tagName && items[i].tagName == 'item') {
+                    var item = items[i];
+                    var id = item.getAttribute('id'), 
+                        url = relPath + '/' + item.getAttribute('href'), 
+                        type = item.getAttribute('media-type'); 
+                    myBook.addItem(id, url, type);
+                  }
+                }
+
+                // build the spine
+                var page = 0;
+                for(var i=0;i<spine.length;i++) {
+                  if(spine[i].tagName && spine[i].tagName == 'itemref') {
+                    myBook.setPage(page++, spine[i].getAttribute('idref'));
+                  }
+                }
+
+                reader.setBook(myBook);
+                
+                document.getElementById('nextPage').addEventListener('click', function(evt) {
+                  evt.preventDefault();
+                  reader.nextPage();
+                }, false);
+                
+              });
+            } else {
+              console.log("no root file");
+            }
+          });
+        }, 
+        function() 
+        {
+          console.log('ERR', arguments);
+        }
+      )
+    }
+</script>
+</body>
+</html>
